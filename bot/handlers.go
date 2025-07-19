@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -88,7 +89,7 @@ func readLastUpdateId() (int, error) {
 }
 
 func writeLastUpdateId(lastUpdateId int) error {
-	return os.WriteFile("offset", []byte(strconv.Itoa(lastUpdateId + 1)), 0644)
+	return os.WriteFile("offset", []byte(strconv.Itoa(lastUpdateId+1)), 0644)
 }
 
 func (b *Bot) handleCommand(msg *tgbotapi.Message) {
@@ -111,11 +112,12 @@ func (b *Bot) handleCommand(msg *tgbotapi.Message) {
 }
 
 func (b *Bot) handleMessage(msg *tgbotapi.Message) {
-	if strings.HasPrefix(msg.Text, "http://") || strings.HasPrefix(msg.Text, "https://") {
-		b.handleSave(msg)
+	link, title := extractLinks(msg.Text)
+	if link == "" {
+		b.sendReply(msg.Chat.ID, "Please use commands to interact with me. Type /help for available commands.")
 		return
 	}
-	b.sendReply(msg.Chat.ID, "Please use commands to interact with me. Type /help for available commands.")
+	b.innerHandleSave(link, title, msg.Chat.ID)
 }
 
 func (b *Bot) handleStart(msg *tgbotapi.Message) {
@@ -138,38 +140,53 @@ func (b *Bot) handleHelp(msg *tgbotapi.Message) {
 	b.sendReply(msg.Chat.ID, text)
 }
 
+func extractLinks(text string) (string, string) {
+	re := regexp.MustCompile(`(https?://[^\s]+)`)
+
+	link := re.FindString(text)
+
+	remainingText := re.ReplaceAllString(text, "")
+
+	return link, strings.TrimSpace(remainingText)
+}
+
 func (b *Bot) handleSave(msg *tgbotapi.Message) {
-	url := strings.TrimSpace(msg.CommandArguments())
-	if url == "" {
+	sharedArticle := strings.TrimSpace(msg.CommandArguments())
+	if sharedArticle == "" {
 		if msg.ReplyToMessage != nil {
-			url = msg.ReplyToMessage.Text
+			sharedArticle = msg.ReplyToMessage.Text
 		} else {
-			url = msg.Text
+			sharedArticle = msg.Text
 		}
 	}
 
-	if !strings.HasPrefix(url, "http") {
+	url, title := extractLinks(sharedArticle)
+
+	if url == "" {
 		b.sendReply(msg.Chat.ID, "Please provide a valid URL starting with http:// or https://")
 		return
 	}
 
-	// In a real implementation, you'd fetch and summarize the article here
+	b.innerHandleSave(url, title, msg.Chat.ID)
+}
+
+func (b *Bot) innerHandleSave(url string, title string, chatId int64) {
 	article := &storage.Article{
 		URL:     url,
-		Title:   extractTitleFromURL(url), // You'd implement this
+		Title:   title,
 		Summary: "Summary would be generated here",
-		UserID:  msg.Chat.ID,
+		UserID:  chatId,
 	}
 
 	if err := b.db.SaveArticle(article); err != nil {
 		log.Printf("Error saving article: %v", err)
-		b.sendReply(msg.Chat.ID, "Failed to save article. Please try again.")
+		b.sendReply(chatId, "Failed to save article. Please try again.")
 		return
 	}
 
 	reply := fmt.Sprintf("✅ *Article saved!*\n\n*Title:* %s\n*URL:* %s",
 		article.Title, article.URL)
-	b.sendReply(msg.Chat.ID, reply)
+	b.sendReply(chatId, reply)
 }
 
 func (b *Bot) handleList(msg *tgbotapi.Message) {
@@ -252,13 +269,4 @@ func parseArticleID(input string) (int, error) {
 	var id int
 	_, err := fmt.Sscanf(strings.TrimSpace(input), "%d", &id)
 	return id, err
-}
-
-func extractTitleFromURL(url string) string {
-	// In a real implementation, you'd fetch the page and extract the title
-	// This is a simplified version
-	if len(url) > 50 {
-		return url[:50] + "..."
-	}
-	return url
 }
