@@ -1,15 +1,16 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
-	"github.com/joho/godotenv"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/joho/godotenv"
 	"github.com/ksyusha123/procrastinator-library/bot"
-	// "github.com/ksyusha123/procrastinator-library/config"
 	"github.com/ksyusha123/procrastinator-library/storage"
 )
 
@@ -24,7 +25,7 @@ func main() {
 		log.Fatal("TELEGRAM_TOKEN not set in .env file")
 	}
 
-	db, err := storage.NewSQLiteDB("articles.db")
+	db, err := storage.NewSQLiteStorage("articles.db")
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
@@ -40,11 +41,19 @@ func main() {
 
 	// go bot.StartNotificationScheduler(articleBot)
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	articleBot.Start()
+	stopChan := make(chan os.Signal, 1)
+	signal.Notify(stopChan, syscall.SIGINT, syscall.SIGTERM)
 
-	<-sigChan
-	log.Println("Shutting down bot...")
+	go articleBot.Start(ctx)
+
+	<-stopChan
+	log.Println("Shutdown signal received")
+
+	cancel()
+
+	time.Sleep(1 * time.Second)
+	log.Println("Bot stopped gracefully")
 }

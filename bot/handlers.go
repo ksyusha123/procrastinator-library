@@ -1,23 +1,27 @@
 package bot
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"os"
+	"strconv"
 	"strings"
+
 	// "time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/ksyusha123/procrastinator-library/storage"
 )
 
-type ArticleBot struct {
-	botAPI    *tgbotapi.BotAPI
-	db        storage.Storage
-	commands  map[string]string
+type Bot struct {
+	botAPI   *tgbotapi.BotAPI
+	db       storage.Storage
+	commands map[string]string
 }
 
-func New(botAPI *tgbotapi.BotAPI, db storage.Storage) *ArticleBot {
-	return &ArticleBot{
+func New(botAPI *tgbotapi.BotAPI, db storage.Storage) *Bot {
+	return &Bot{
 		botAPI: botAPI,
 		db:     db,
 		commands: map[string]string{
@@ -30,28 +34,64 @@ func New(botAPI *tgbotapi.BotAPI, db storage.Storage) *ArticleBot {
 	}
 }
 
-func (b *ArticleBot) Start() {
+func (b *Bot) Start(ctx context.Context) {
 	log.Println("Starting article bot...")
+
+	_, err := readLastUpdateId()
+	if err != nil {
+		return
+	}
+
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 
 	updates := b.botAPI.GetUpdatesChan(u)
 
-	for update := range updates {
-		if update.Message == nil {
-			continue
+	for {
+		select {
+		case update := <-updates:
+			b.handleUpdate(&update)
+		case <-ctx.Done():
+			log.Println("Stopping bot updates")
+			return
 		}
-
-		if update.Message.IsCommand() {
-			b.handleCommand(update.Message)
-			continue
-		}
-
-		b.handleMessage(update.Message)
 	}
 }
 
-func (b *ArticleBot) handleCommand(msg *tgbotapi.Message) {
+func (b *Bot) handleUpdate(update *tgbotapi.Update) {
+	if update.Message == nil {
+		return
+	}
+
+	if update.Message.IsCommand() {
+		b.handleCommand(update.Message)
+		return
+	}
+
+	b.handleMessage(update.Message)
+
+	writeLastUpdateId(update.UpdateID)
+}
+
+func readLastUpdateId() (int, error) {
+	content, err := os.ReadFile("offset")
+	if err != nil {
+		fmt.Printf("Error reading file: %v\n", err)
+		return 0, err
+	}
+	num, err := strconv.Atoi(string(content))
+	if err != nil {
+		fmt.Printf("Error converting line: %v\n", err)
+		return 0, err
+	}
+	return num, nil
+}
+
+func writeLastUpdateId(lastUpdateId int) error {
+	return os.WriteFile("offset", []byte(strconv.Itoa(lastUpdateId + 1)), 0644)
+}
+
+func (b *Bot) handleCommand(msg *tgbotapi.Message) {
 	switch msg.Command() {
 	case "start":
 		b.handleStart(msg)
@@ -70,8 +110,7 @@ func (b *ArticleBot) handleCommand(msg *tgbotapi.Message) {
 	}
 }
 
-func (b *ArticleBot) handleMessage(msg *tgbotapi.Message) {
-	// Handle direct URL messages
+func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 	if strings.HasPrefix(msg.Text, "http://") || strings.HasPrefix(msg.Text, "https://") {
 		b.handleSave(msg)
 		return
@@ -79,11 +118,11 @@ func (b *ArticleBot) handleMessage(msg *tgbotapi.Message) {
 	b.sendReply(msg.Chat.ID, "Please use commands to interact with me. Type /help for available commands.")
 }
 
-func (b *ArticleBot) handleStart(msg *tgbotapi.Message) {
+func (b *Bot) handleStart(msg *tgbotapi.Message) {
 	text := "📚 *Article Bot*\n\n" +
 		"I help you save and organize articles you want to read later.\n\n" +
 		"*Available commands:*\n"
-	
+
 	for cmd, desc := range b.commands {
 		text += fmt.Sprintf("/%s - %s\n", cmd, desc)
 	}
@@ -91,7 +130,7 @@ func (b *ArticleBot) handleStart(msg *tgbotapi.Message) {
 	b.sendReply(msg.Chat.ID, text)
 }
 
-func (b *ArticleBot) handleHelp(msg *tgbotapi.Message) {
+func (b *Bot) handleHelp(msg *tgbotapi.Message) {
 	text := "🛠 *Available commands:*\n"
 	for cmd, desc := range b.commands {
 		text += fmt.Sprintf("/%s - %s\n", cmd, desc)
@@ -99,10 +138,9 @@ func (b *ArticleBot) handleHelp(msg *tgbotapi.Message) {
 	b.sendReply(msg.Chat.ID, text)
 }
 
-func (b *ArticleBot) handleSave(msg *tgbotapi.Message) {
+func (b *Bot) handleSave(msg *tgbotapi.Message) {
 	url := strings.TrimSpace(msg.CommandArguments())
 	if url == "" {
-		// Check if message is a reply with URL
 		if msg.ReplyToMessage != nil {
 			url = msg.ReplyToMessage.Text
 		} else {
@@ -129,12 +167,12 @@ func (b *ArticleBot) handleSave(msg *tgbotapi.Message) {
 		return
 	}
 
-	reply := fmt.Sprintf("✅ *Article saved!*\n\n*Title:* %s\n*URL:* %s", 
+	reply := fmt.Sprintf("✅ *Article saved!*\n\n*Title:* %s\n*URL:* %s",
 		article.Title, article.URL)
 	b.sendReply(msg.Chat.ID, reply)
 }
 
-func (b *ArticleBot) handleList(msg *tgbotapi.Message) {
+func (b *Bot) handleList(msg *tgbotapi.Message) {
 	articles, err := b.db.GetArticles(msg.Chat.ID)
 	if err != nil {
 		log.Printf("Error getting articles: %v", err)
@@ -155,9 +193,9 @@ func (b *ArticleBot) handleList(msg *tgbotapi.Message) {
 		if article.IsRead {
 			status = "✅"
 		}
-		sb.WriteString(fmt.Sprintf("%d. %s [%s]\n%s\n\n", 
+		sb.WriteString(fmt.Sprintf("%d. %s [%s]\n%s\n\n",
 			i+1, article.Title, status, article.URL))
-		
+
 		// Telegram has message length limits, so we send in chunks
 		if i > 0 && i%5 == 0 {
 			b.sendReply(msg.Chat.ID, sb.String())
@@ -170,7 +208,7 @@ func (b *ArticleBot) handleList(msg *tgbotapi.Message) {
 	}
 }
 
-func (b *ArticleBot) handleMarkRead(msg *tgbotapi.Message) {
+func (b *Bot) handleMarkRead(msg *tgbotapi.Message) {
 	articleID, err := parseArticleID(msg.CommandArguments())
 	if err != nil {
 		b.sendReply(msg.Chat.ID, "Please provide a valid article ID (number from /list)")
@@ -186,7 +224,7 @@ func (b *ArticleBot) handleMarkRead(msg *tgbotapi.Message) {
 	b.sendReply(msg.Chat.ID, fmt.Sprintf("✅ Marked article #%d as read", articleID))
 }
 
-func (b *ArticleBot) handleDelete(msg *tgbotapi.Message) {
+func (b *Bot) handleDelete(msg *tgbotapi.Message) {
 	articleID, err := parseArticleID(msg.CommandArguments())
 	if err != nil {
 		b.sendReply(msg.Chat.ID, "Please provide a valid article ID (number from /list)")
@@ -202,7 +240,7 @@ func (b *ArticleBot) handleDelete(msg *tgbotapi.Message) {
 	b.sendReply(msg.Chat.ID, fmt.Sprintf("🗑 Deleted article #%d", articleID))
 }
 
-func (b *ArticleBot) sendReply(chatID int64, text string) {
+func (b *Bot) sendReply(chatID int64, text string) {
 	msg := tgbotapi.NewMessage(chatID, text)
 	msg.ParseMode = tgbotapi.ModeMarkdown
 	if _, err := b.botAPI.Send(msg); err != nil {
@@ -210,7 +248,6 @@ func (b *ArticleBot) sendReply(chatID int64, text string) {
 	}
 }
 
-// Helper functions
 func parseArticleID(input string) (int, error) {
 	var id int
 	_, err := fmt.Sscanf(strings.TrimSpace(input), "%d", &id)

@@ -8,7 +8,11 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-func NewSQLiteDB(dbPath string) (*SQLiteDB, error) {
+type SQLiteStorage struct {
+	db *sql.DB
+}
+
+func NewSQLiteStorage(dbPath string) (*SQLiteStorage, error) {
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, err
@@ -18,7 +22,7 @@ func NewSQLiteDB(dbPath string) (*SQLiteDB, error) {
 		return nil, err
 	}
 
-	return &SQLiteDB{db: db}, nil
+	return &SQLiteStorage{db: db}, nil
 }
 
 func createTables(db *sql.DB) error {
@@ -32,14 +36,15 @@ func createTables(db *sql.DB) error {
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		user_id INTEGER NOT NULL
 	)`)
+
 	return err
 }
 
-func (s *SQLiteDB) Close() error {
+func (s *SQLiteStorage) Close() error {
 	return s.db.Close()
 }
 
-func (s *SQLiteDB) SaveArticle(article *Article) error {
+func (s *SQLiteStorage) SaveArticle(article *Article) error {
 	_, err := s.db.Exec(
 		`INSERT INTO articles (url, title, summary, is_read, user_id) 
 		VALUES (?, ?, ?, ?, ?)`,
@@ -52,7 +57,7 @@ func (s *SQLiteDB) SaveArticle(article *Article) error {
 	return err
 }
 
-func (s *SQLiteDB) GetArticles(userID int64) ([]Article, error) {
+func (s *SQLiteStorage) GetArticles(userID int64) ([]Article, error) {
 	rows, err := s.db.Query(
 		`SELECT id, url, title, summary, is_read, created_at 
 		FROM articles 
@@ -81,7 +86,7 @@ func (s *SQLiteDB) GetArticles(userID int64) ([]Article, error) {
 			log.Printf("Error scanning article row: %v", err)
 			continue
 		}
-		
+
 		a.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
 		articles = append(articles, a)
 	}
@@ -89,7 +94,7 @@ func (s *SQLiteDB) GetArticles(userID int64) ([]Article, error) {
 	return articles, nil
 }
 
-func (s *SQLiteDB) MarkAsRead(articleID int, userID int64) error {
+func (s *SQLiteStorage) MarkAsRead(articleID int, userID int64) error {
 	_, err := s.db.Exec(
 		`UPDATE articles 
 		SET is_read = TRUE 
@@ -100,7 +105,7 @@ func (s *SQLiteDB) MarkAsRead(articleID int, userID int64) error {
 	return err
 }
 
-func (s *SQLiteDB) DeleteArticle(articleID int, userID int64) error {
+func (s *SQLiteStorage) DeleteArticle(articleID int, userID int64) error {
 	_, err := s.db.Exec(
 		`DELETE FROM articles 
 		WHERE id = ? AND user_id = ?`,
@@ -110,7 +115,7 @@ func (s *SQLiteDB) DeleteArticle(articleID int, userID int64) error {
 	return err
 }
 
-func (s *SQLiteDB) GetUnreadArticles(userID int64) ([]Article, error) {
+func (s *SQLiteStorage) GetUnreadArticles(userID int64) ([]Article, error) {
 	rows, err := s.db.Query(
 		`SELECT id, url, title 
 		FROM articles 

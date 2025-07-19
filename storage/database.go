@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"database/sql"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -25,8 +24,4 @@ type Storage interface {
 	DeleteArticle(articleID int, userID int64) error
 	// SearchByTag(userID int64, tag string) ([]Article, error)
 	GetUnreadArticles(userID int64) ([]Article, error)
-}
-
-type SQLiteDB struct {
-	db *sql.DB
 }
