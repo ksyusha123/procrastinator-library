@@ -29,13 +29,13 @@ func createTables(db *sql.DB) error {
 	_, err := db.Exec(`
 	CREATE TABLE IF NOT EXISTS articles (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		url TEXT NOT NULL,
+		url TEXT NOT NULL UNIQUE,
 		title TEXT,
 		summary TEXT,
 		is_read BOOLEAN DEFAULT FALSE,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		user_id INTEGER NOT NULL
-	)`)
+	);`)
 
 	return err
 }

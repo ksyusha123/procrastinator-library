@@ -93,7 +93,14 @@ func writeLastUpdateId(lastUpdateId int) error {
 }
 
 func (b *Bot) handleCommand(msg *tgbotapi.Message) {
-	switch msg.Command() {
+	cmdParts := strings.SplitN(msg.Command(), "_", 2)
+	baseCmd := cmdParts[0]
+	var arg string
+	if len(cmdParts) > 1 {
+		arg = cmdParts[1]
+	}
+
+	switch baseCmd {
 	case "start":
 		b.handleStart(msg)
 	case "save":
@@ -101,14 +108,56 @@ func (b *Bot) handleCommand(msg *tgbotapi.Message) {
 	case "list":
 		b.handleList(msg)
 	case "read":
-		b.handleMarkRead(msg)
+		if arg == "" {
+			b.sendReply(msg.Chat.ID, "Usage: /read_<article_id>")
+			return
+		}
+		b.handleMarkRead(msg, arg)
 	case "delete":
-		b.handleDelete(msg)
+		if arg == "" {
+			b.sendReply(msg.Chat.ID, "Usage: /delete_<article_id>")
+			return
+		}
+		b.handleDelete(msg, arg)
 	case "help":
 		b.handleHelp(msg)
 	default:
 		b.sendReply(msg.Chat.ID, "Unknown command. Type /help for available commands.")
 	}
+}
+
+func (b *Bot) handleMarkRead(msg *tgbotapi.Message, articleID string) {
+	id, err := strconv.Atoi(articleID)
+	if err != nil {
+		b.sendReply(msg.Chat.ID, "Invalid article ID. Must be a number.")
+		return
+	}
+
+	err = b.db.MarkAsRead(id, msg.Chat.ID)
+	if err != nil {
+		b.sendReply(msg.Chat.ID, "Failed to mark article as read.")
+		log.Printf("Error marking as read: %v", err)
+		return
+	}
+
+	b.sendReply(msg.Chat.ID, fmt.Sprintf("✅ Article #%d marked as read", id))
+}
+
+func (b *Bot) handleDelete(msg *tgbotapi.Message, articleID string) {
+	id, err := strconv.Atoi(articleID)
+	if err != nil {
+		b.sendReply(msg.Chat.ID, "Invalid article ID. Must be a number.")
+		return
+	}
+
+	err = b.db.DeleteArticle(id, msg.Chat.ID)
+	if err != nil {
+		b.sendReply(msg.Chat.ID, "Failed to delete article.")
+		log.Printf("Error deleting article: %v", err)
+		return
+	}
+
+	b.sendReply(msg.Chat.ID, fmt.Sprintf("🗑 Article #%d deleted", id))
 }
 
 func (b *Bot) handleMessage(msg *tgbotapi.Message) {
@@ -210,8 +259,11 @@ func (b *Bot) handleList(msg *tgbotapi.Message) {
 		if article.IsRead {
 			status = "✅"
 		}
-		sb.WriteString(fmt.Sprintf("%d. %s [%s]\n%s\n\n",
-			i+1, article.Title, status, article.URL))
+		readCommand := fmt.Sprintf("/read\\_%d", article.ID)
+		deleteCommand := fmt.Sprintf("/delete\\_%d", article.ID)
+
+		sb.WriteString(fmt.Sprintf("%d. %s [%s]\n%s\n%s | %s\n\n",
+			i+1, article.Title, status, article.URL, readCommand, deleteCommand))
 
 		// Telegram has message length limits, so we send in chunks
 		if i > 0 && i%5 == 0 {
@@ -225,48 +277,10 @@ func (b *Bot) handleList(msg *tgbotapi.Message) {
 	}
 }
 
-func (b *Bot) handleMarkRead(msg *tgbotapi.Message) {
-	articleID, err := parseArticleID(msg.CommandArguments())
-	if err != nil {
-		b.sendReply(msg.Chat.ID, "Please provide a valid article ID (number from /list)")
-		return
-	}
-
-	if err := b.db.MarkAsRead(articleID, msg.Chat.ID); err != nil {
-		log.Printf("Error marking article as read: %v", err)
-		b.sendReply(msg.Chat.ID, "Failed to mark article as read. Please check the ID and try again.")
-		return
-	}
-
-	b.sendReply(msg.Chat.ID, fmt.Sprintf("✅ Marked article #%d as read", articleID))
-}
-
-func (b *Bot) handleDelete(msg *tgbotapi.Message) {
-	articleID, err := parseArticleID(msg.CommandArguments())
-	if err != nil {
-		b.sendReply(msg.Chat.ID, "Please provide a valid article ID (number from /list)")
-		return
-	}
-
-	if err := b.db.DeleteArticle(articleID, msg.Chat.ID); err != nil {
-		log.Printf("Error deleting article: %v", err)
-		b.sendReply(msg.Chat.ID, "Failed to delete article. Please check the ID and try again.")
-		return
-	}
-
-	b.sendReply(msg.Chat.ID, fmt.Sprintf("🗑 Deleted article #%d", articleID))
-}
-
 func (b *Bot) sendReply(chatID int64, text string) {
 	msg := tgbotapi.NewMessage(chatID, text)
 	msg.ParseMode = tgbotapi.ModeMarkdown
 	if _, err := b.botAPI.Send(msg); err != nil {
 		log.Printf("Error sending message: %v", err)
 	}
-}
-
-func parseArticleID(input string) (int, error) {
-	var id int
-	_, err := fmt.Sscanf(strings.TrimSpace(input), "%d", &id)
-	return id, err
 }
