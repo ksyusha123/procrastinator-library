@@ -17,11 +17,21 @@ type Article struct {
 	UserID    int64
 }
 
-type Storage interface {
+// type User struct {
+// 	ID int
+// }
+
+type ArticleStorage interface {
 	SaveArticle(article *Article) error
 	GetArticles(userID int64) ([]Article, error)
 	MarkAsRead(articleID int, userID int64) error
 	DeleteArticle(articleID int, userID int64) error
 	// SearchByTag(userID int64, tag string) ([]Article, error)
 	GetUnreadArticles(userID int64) ([]Article, error)
+	GetAllUnreadArticles() ([]Article, error)
 }
+
+// type UserStorage interface {
+// 	SaveUser(userID int64) error
+// 	GetUsers() ([]User, error)
+// }

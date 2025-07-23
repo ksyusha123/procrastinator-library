@@ -39,7 +39,7 @@ func main() {
 
 	articleBot := bot.New(botAPI, db)
 
-	// go bot.StartNotificationScheduler(articleBot)
+	go articleBot.StartNotificationScheduler()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

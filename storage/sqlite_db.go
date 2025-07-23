@@ -59,7 +59,7 @@ func (s *SQLiteStorage) SaveArticle(article *Article) error {
 
 func (s *SQLiteStorage) GetArticles(userID int64) ([]Article, error) {
 	rows, err := s.db.Query(
-		`SELECT id, url, title, summary, is_read, created_at 
+		`SELECT id, url, title, summary, is_read, created_at, user_id 
 		FROM articles 
 		WHERE user_id = ? 
 		ORDER BY created_at DESC`,
@@ -81,6 +81,7 @@ func (s *SQLiteStorage) GetArticles(userID int64) ([]Article, error) {
 			&a.Summary,
 			&a.IsRead,
 			&createdAt,
+			&a.UserID,
 		)
 		if err != nil {
 			log.Printf("Error scanning article row: %v", err)
@@ -140,3 +141,47 @@ func (s *SQLiteStorage) GetUnreadArticles(userID int64) ([]Article, error) {
 
 	return articles, nil
 }
+
+func (s *SQLiteStorage) GetAllUnreadArticles() ([]Article, error) {
+	rows, err := s.db.Query(
+		`SELECT id, url, title, user_id 
+		FROM articles 
+		WHERE is_read = FALSE`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var articles []Article
+	for rows.Next() {
+		var a Article
+		err := rows.Scan(&a.ID, &a.URL, &a.Title, &a.UserID)
+		if err != nil {
+			log.Printf("Error scanning unread article: %v", err)
+			continue
+		}
+		articles = append(articles, a)
+	}
+
+	return articles, nil
+}
+
+// func (s *SQLiteStorage) GetUsers() ([]User, error) {
+// 	rows, err := s.db.Query(`SELECT id FROM users`)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	defer rows.Close()
+
+// 	var users []User
+// 	for rows.Next(){
+// 		var u User
+// 		err := rows.Scan(&u.ID)
+// 		if err != nil {
+// 			log.Printf("Error scanning user: %v", err)
+// 			continue
+// 		}
+// 		users = append(users, u)
+// 	}
+// 	return users, nil
+// }

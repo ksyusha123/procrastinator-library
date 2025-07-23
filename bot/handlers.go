@@ -1,7 +1,6 @@
 package bot
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"os"
@@ -14,50 +13,6 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/ksyusha123/procrastinator-library/storage"
 )
-
-type Bot struct {
-	botAPI   *tgbotapi.BotAPI
-	db       storage.Storage
-	commands map[string]string
-}
-
-func New(botAPI *tgbotapi.BotAPI, db storage.Storage) *Bot {
-	return &Bot{
-		botAPI: botAPI,
-		db:     db,
-		commands: map[string]string{
-			"save":   "Save an article (reply to message or provide URL)",
-			"list":   "List your saved articles",
-			"read":   "Mark article as read (provide article ID)",
-			"delete": "Delete article (provide article ID)",
-			"help":   "Show available commands",
-		},
-	}
-}
-
-func (b *Bot) Start(ctx context.Context) {
-	log.Println("Starting article bot...")
-
-	_, err := readLastUpdateId()
-	if err != nil {
-		return
-	}
-
-	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 60
-
-	updates := b.botAPI.GetUpdatesChan(u)
-
-	for {
-		select {
-		case update := <-updates:
-			b.handleUpdate(&update)
-		case <-ctx.Done():
-			log.Println("Stopping bot updates")
-			return
-		}
-	}
-}
 
 func (b *Bot) handleUpdate(update *tgbotapi.Update) {
 	if update.Message == nil {
@@ -133,7 +88,7 @@ func (b *Bot) handleMarkRead(msg *tgbotapi.Message, articleID string) {
 		return
 	}
 
-	err = b.db.MarkAsRead(id, msg.Chat.ID)
+	err = b.articleStorage.MarkAsRead(id, msg.Chat.ID)
 	if err != nil {
 		b.sendReply(msg.Chat.ID, "Failed to mark article as read.")
 		log.Printf("Error marking as read: %v", err)
@@ -150,7 +105,7 @@ func (b *Bot) handleDelete(msg *tgbotapi.Message, articleID string) {
 		return
 	}
 
-	err = b.db.DeleteArticle(id, msg.Chat.ID)
+	err = b.articleStorage.DeleteArticle(id, msg.Chat.ID)
 	if err != nil {
 		b.sendReply(msg.Chat.ID, "Failed to delete article.")
 		log.Printf("Error deleting article: %v", err)
@@ -219,27 +174,27 @@ func (b *Bot) handleSave(msg *tgbotapi.Message) {
 	b.innerHandleSave(url, title, msg.Chat.ID)
 }
 
-func (b *Bot) innerHandleSave(url string, title string, chatId int64) {
+func (b *Bot) innerHandleSave(url string, title string, chatID int64) {
 	article := &storage.Article{
 		URL:     url,
 		Title:   title,
 		Summary: "Summary would be generated here",
-		UserID:  chatId,
+		UserID:  chatID,
 	}
 
-	if err := b.db.SaveArticle(article); err != nil {
+	if err := b.articleStorage.SaveArticle(article); err != nil {
 		log.Printf("Error saving article: %v", err)
-		b.sendReply(chatId, "Failed to save article. Please try again.")
+		b.sendReply(chatID, "Failed to save article. Please try again.")
 		return
 	}
 
 	reply := fmt.Sprintf("✅ *Article saved!*\n\n*Title:* %s\n*URL:* %s",
 		article.Title, article.URL)
-	b.sendReply(chatId, reply)
+	b.sendReply(chatID, reply)
 }
 
 func (b *Bot) handleList(msg *tgbotapi.Message) {
-	articles, err := b.db.GetArticles(msg.Chat.ID)
+	articles, err := b.articleStorage.GetArticles(msg.Chat.ID)
 	if err != nil {
 		log.Printf("Error getting articles: %v", err)
 		b.sendReply(msg.Chat.ID, "Failed to retrieve articles. Please try again.")
