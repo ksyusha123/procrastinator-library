@@ -58,9 +58,9 @@ func (s *SQLiteDb) GetArticles(userID int64) ([]Article, error) {
 
 func (s *SQLiteDb) MarkAsRead(articleID int, userID int64) error {
 	_, err := s.db.Exec(
-		`UPDATE user_articles 
+		`UPDATE articles 
 		SET is_read = TRUE 
-		WHERE article_id = ? AND user_id = ?`,
+		WHERE id = ? AND user_id = ?`,
 		articleID,
 		userID,
 	)

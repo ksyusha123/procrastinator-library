@@ -15,7 +15,7 @@ func (b *Bot) StartNotificationScheduler() {
 	c := cron.New(cron.WithLocation(time.UTC))
 
 	// Schedule for every Monday at 9 AM (UTC) "0 9 * * 1"
-	_, err := c.AddFunc("0 9 * * 1", func() {
+	_, err := c.AddFunc("* * * * *", func() {
 		b.sendWeeklyNotifications()
 	})
 	if err != nil {
@@ -57,7 +57,7 @@ func (b *Bot) sendUserNotification(chatID int64, articles []Article) {
 		))
 
 		sb.WriteString(fmt.Sprintf(
-			"Use `%s` to mark as read",
+			"Use %s to mark as read",
 			b.generateReadCommand(articles[0].ID),
 		))
 	}
