@@ -25,7 +25,7 @@ func main() {
 		log.Fatal("TELEGRAM_TOKEN not set in .env file")
 	}
 
-	db, err := storage.NewSQLiteStorage("articles.db")
+	db, err := storage.New("articles.db")
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
@@ -35,9 +35,7 @@ func main() {
 		log.Fatalf("Failed to create bot: %v", err)
 	}
 
-	// articleBot := bot.New(botAPI, db, cfg.OpenAIKey)
-
-	articleBot := bot.New(botAPI, db)
+	articleBot := bot.New(botAPI, *db)
 
 	go articleBot.StartNotificationScheduler()
 

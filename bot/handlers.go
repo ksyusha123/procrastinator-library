@@ -3,18 +3,19 @@ package bot
 import (
 	"fmt"
 	"log"
-	"os"
+	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 
-	// "time"
-
+	readability "github.com/go-shiori/go-readability"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/ksyusha123/procrastinator-library/storage"
 )
 
 func (b *Bot) handleUpdate(update *tgbotapi.Update) {
+	b.userStorage.SaveUser(update.Message.Chat.ID)
 	if update.Message == nil {
 		return
 	}
@@ -25,26 +26,6 @@ func (b *Bot) handleUpdate(update *tgbotapi.Update) {
 	}
 
 	b.handleMessage(update.Message)
-
-	writeLastUpdateId(update.UpdateID)
-}
-
-func readLastUpdateId() (int, error) {
-	content, err := os.ReadFile("offset")
-	if err != nil {
-		fmt.Printf("Error reading file: %v\n", err)
-		return 0, err
-	}
-	num, err := strconv.Atoi(string(content))
-	if err != nil {
-		fmt.Printf("Error converting line: %v\n", err)
-		return 0, err
-	}
-	return num, nil
-}
-
-func writeLastUpdateId(lastUpdateId int) error {
-	return os.WriteFile("offset", []byte(strconv.Itoa(lastUpdateId+1)), 0644)
 }
 
 func (b *Bot) handleCommand(msg *tgbotapi.Message) {
@@ -116,12 +97,14 @@ func (b *Bot) handleDelete(msg *tgbotapi.Message, articleID string) {
 }
 
 func (b *Bot) handleMessage(msg *tgbotapi.Message) {
-	link, title := extractLinks(msg.Text)
-	if link == "" {
+	urls := extractLinks(msg.Text)
+	if urls == nil {
 		b.sendReply(msg.Chat.ID, "Please use commands to interact with me. Type /help for available commands.")
 		return
 	}
-	b.innerHandleSave(link, title, msg.Chat.ID)
+	for _, url := range urls {
+		b.innerHandleSave(url, getTitle(url), msg.Chat.ID)
+	}
 }
 
 func (b *Bot) handleStart(msg *tgbotapi.Message) {
@@ -144,14 +127,10 @@ func (b *Bot) handleHelp(msg *tgbotapi.Message) {
 	b.sendReply(msg.Chat.ID, text)
 }
 
-func extractLinks(text string) (string, string) {
+func extractLinks(text string) []string {
 	re := regexp.MustCompile(`(https?://[^\s]+)`)
-
-	link := re.FindString(text)
-
-	remainingText := re.ReplaceAllString(text, "")
-
-	return link, strings.TrimSpace(remainingText)
+	links := re.FindAllString(text, -1)
+	return links
 }
 
 func (b *Bot) handleSave(msg *tgbotapi.Message) {
@@ -164,22 +143,53 @@ func (b *Bot) handleSave(msg *tgbotapi.Message) {
 		}
 	}
 
-	url, title := extractLinks(sharedArticle)
+	urls := extractLinks(sharedArticle)
 
-	if url == "" {
+	if urls == nil {
 		b.sendReply(msg.Chat.ID, "Please provide a valid URL starting with http:// or https://")
 		return
 	}
 
-	b.innerHandleSave(url, title, msg.Chat.ID)
+	for _, url := range urls {
+		b.innerHandleSave(url, getTitle(url), msg.Chat.ID)
+	}
+}
+
+func getTitle(u string) string {
+	resp, err := http.Get(u)
+	if err != nil {
+		log.Fatalf("failed to download %s: %v\n", u, err)
+	}
+	defer resp.Body.Close()
+
+	parsedURL, err := url.Parse(u)
+	if err != nil {
+		log.Fatalf("error parsing url")
+	}
+
+	article, err := readability.FromReader(resp.Body, parsedURL)
+	if err != nil {
+		log.Fatalf("failed to parse %s: %v\n", u, err)
+	}
+
+	fmt.Printf("URL     : %s\n", u)
+	fmt.Printf("Title   : %s\n", article.Title)
+	fmt.Printf("Author  : %s\n", article.Byline)
+	fmt.Printf("Length  : %d\n", article.Length)
+	fmt.Printf("Excerpt : %s\n", article.Excerpt)
+	fmt.Printf("SiteName: %s\n", article.SiteName)
+	fmt.Printf("Image   : %s\n", article.Image)
+	fmt.Printf("Favicon : %s\n", article.Favicon)
+	fmt.Println()
+
+	return article.Title
 }
 
 func (b *Bot) innerHandleSave(url string, title string, chatID int64) {
 	article := &storage.Article{
-		URL:     url,
-		Title:   title,
-		Summary: "Summary would be generated here",
-		UserID:  chatID,
+		URL:    url,
+		Title:  title,
+		UserID: chatID,
 	}
 
 	if err := b.articleStorage.SaveArticle(article); err != nil {

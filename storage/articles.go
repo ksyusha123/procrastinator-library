@@ -2,36 +2,31 @@ package storage
 
 import (
 	"time"
-
-	_ "github.com/mattn/go-sqlite3"
 )
 
 type Article struct {
 	ID        int
 	URL       string
 	Title     string
-	Summary   string
-	Tags      []string
+	UserID    int64
 	IsRead    bool
 	CreatedAt time.Time
-	UserID    int64
 }
 
-// type User struct {
-// 	ID int
-// }
+type ArticleSummary struct {
+	ID      int
+	Summary string
+}
+
+type ArticleTags struct {
+	ID   int
+	Tags []string
+}
 
 type ArticleStorage interface {
 	SaveArticle(article *Article) error
 	GetArticles(userID int64) ([]Article, error)
 	MarkAsRead(articleID int, userID int64) error
 	DeleteArticle(articleID int, userID int64) error
-	// SearchByTag(userID int64, tag string) ([]Article, error)
 	GetUnreadArticles(userID int64) ([]Article, error)
-	GetAllUnreadArticles() ([]Article, error)
 }
-
-// type UserStorage interface {
-// 	SaveUser(userID int64) error
-// 	GetUsers() ([]User, error)
-// }
