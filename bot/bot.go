@@ -52,7 +52,10 @@ func (b *Bot) Start(ctx context.Context) {
 		select {
 		case update := <-updates:
 			b.handleUpdate(&update)
-			writeLastUpdateId(update.UpdateID)
+			err := writeLastUpdateId(update.UpdateID)
+			if err != nil {
+				log.Println()
+			}
 		case <-ctx.Done():
 			log.Println("Stopping bot updates")
 			return

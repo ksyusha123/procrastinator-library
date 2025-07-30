@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	readability "github.com/go-shiori/go-readability"
+	"github.com/go-shiori/go-readability"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/ksyusha123/procrastinator-library/storage"
 )
@@ -102,8 +102,8 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		b.sendReply(msg.Chat.ID, "Please use commands to interact with me. Type /help for available commands.")
 		return
 	}
-	for _, url := range urls {
-		b.innerHandleSave(url, getTitle(url), msg.Chat.ID)
+	for _, u := range urls {
+		b.innerHandleSave(u, getTitle(u), msg.Chat.ID)
 	}
 }
 
@@ -150,8 +150,8 @@ func (b *Bot) handleSave(msg *tgbotapi.Message) {
 		return
 	}
 
-	for _, url := range urls {
-		b.innerHandleSave(url, getTitle(url), msg.Chat.ID)
+	for _, u := range urls {
+		b.innerHandleSave(u, getTitle(u), msg.Chat.ID)
 	}
 }
 
