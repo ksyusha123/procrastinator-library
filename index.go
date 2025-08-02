@@ -4,12 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/ksyusha123/procrastinator-library/bot"
+	"github.com/ksyusha123/procrastinator-library/storage"
+	"log"
 	"os"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-var bot *tgbotapi.BotAPI
+var articleBot *bot.Bot
 
 func init() {
 	token := os.Getenv("TELEGRAM_BOT_TOKEN")
@@ -17,14 +20,17 @@ func init() {
 		panic("TELEGRAM_BOT_TOKEN environment variable not set")
 	}
 
-	var err error
-	bot, err = tgbotapi.NewBotAPI(token)
+	db, err := storage.New("articles.db")
 	if err != nil {
-		panic(fmt.Sprintf("Error creating bot: %v", err))
+		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
-	bot.Debug = true
-	fmt.Printf("Authorized on account %s\n", bot.Self.UserName)
+	botAPI, err := tgbotapi.NewBotAPI(token)
+	if err != nil {
+		log.Fatalf("Failed to create bot: %v", err)
+	}
+
+	articleBot = bot.New(botAPI, *db)
 }
 
 type APIGatewayRequest struct {
@@ -60,23 +66,18 @@ type APIGatewayResponse struct {
 }
 
 func Greet(ctx context.Context, event *APIGatewayRequest) (*APIGatewayResponse, error) {
-	req := &tgbotapi.Update{}
+	update := &tgbotapi.Update{}
 
-	if err := json.Unmarshal([]byte(event.Body), &req); err != nil {
+	if err := json.Unmarshal([]byte(event.Body), &update); err != nil {
 		return nil, fmt.Errorf("an error has occurred when parsing body: %v", err)
 	}
 
 	fmt.Println(event.HTTPMethod, event.Path)
 
-	msg := tgbotapi.NewMessage(req.Message.Chat.ID, "You said: "+"meeeow")
-	_, err := bot.Send(msg)
-	if err != nil {
-		fmt.Println("an error has occurred when sending message: ", err)
-		return nil, err
-	}
+	articleBot.HandleUpdate(update)
 
 	return &APIGatewayResponse{
 		StatusCode: 200,
-		Body:       fmt.Sprintf("Hello, %s", req.Message.Chat.ID),
+		Body:       fmt.Sprintf("Hello, %s", update.Message.Chat.ID),
 	}, nil
 }

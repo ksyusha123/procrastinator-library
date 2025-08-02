@@ -14,18 +14,19 @@ import (
 	"github.com/ksyusha123/procrastinator-library/storage"
 )
 
-func (b *Bot) handleUpdate(update *tgbotapi.Update) {
-	b.userStorage.SaveUser(update.Message.Chat.ID)
-	if update.Message == nil {
-		return
-	}
-
-	if update.Message.IsCommand() {
-		b.handleCommand(update.Message)
-		return
-	}
-
-	b.handleMessage(update.Message)
+func (b *Bot) HandleUpdate(update *tgbotapi.Update) {
+	b.sendReply(update.Message.Chat.ID, "Meeeeow!")
+	//b.userStorage.SaveUser(update.Message.Chat.ID)
+	//if update.Message == nil {
+	//	return
+	//}
+	//
+	//if update.Message.IsCommand() {
+	//	b.handleCommand(update.Message)
+	//	return
+	//}
+	//
+	//b.handleMessage(update.Message)
 }
 
 func (b *Bot) handleCommand(msg *tgbotapi.Message) {
