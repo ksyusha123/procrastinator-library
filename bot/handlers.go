@@ -1,35 +1,39 @@
 package bot
 
 import (
+	"context"
 	"fmt"
+	"github.com/google/uuid"
+	"github.com/ksyusha123/procrastinator-library/storage/articles"
 	"log"
 	"net/http"
 	"net/url"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/go-shiori/go-readability"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/ksyusha123/procrastinator-library/storage"
 )
 
-func (b *Bot) HandleUpdate(update *tgbotapi.Update) {
-	b.sendReply(update.Message.Chat.ID, "Meeeeow!")
-	//b.userStorage.SaveUser(update.Message.Chat.ID)
-	//if update.Message == nil {
-	//	return
-	//}
-	//
-	//if update.Message.IsCommand() {
-	//	b.handleCommand(update.Message)
-	//	return
-	//}
-	//
-	//b.handleMessage(update.Message)
+func (b *Bot) HandleUpdate(ctx context.Context, update *tgbotapi.Update) {
+	//b.sendReply(update.Message.Chat.ID, "Meeeeow!")
+	err := b.userStorage.Save(ctx, update.Message.Chat.ID)
+	if err != nil {
+		return
+	}
+	if update.Message == nil {
+		return
+	}
+
+	if update.Message.IsCommand() {
+		b.handleCommand(ctx, update.Message)
+		return
+	}
+
+	b.handleMessage(ctx, update.Message)
 }
 
-func (b *Bot) handleCommand(msg *tgbotapi.Message) {
+func (b *Bot) handleCommand(ctx context.Context, msg *tgbotapi.Message) {
 	cmdParts := strings.SplitN(msg.Command(), "_", 2)
 	baseCmd := cmdParts[0]
 	var arg string
@@ -41,21 +45,21 @@ func (b *Bot) handleCommand(msg *tgbotapi.Message) {
 	case "start":
 		b.handleStart(msg)
 	case "save":
-		b.handleSave(msg)
+		b.handleSave(ctx, msg)
 	case "list":
-		b.handleList(msg)
+		b.handleList(ctx, msg)
 	case "read":
 		if arg == "" {
 			b.sendReply(msg.Chat.ID, "Usage: /read_<article_id>")
 			return
 		}
-		b.handleMarkRead(msg, arg)
+		b.handleMarkRead(ctx, msg, arg)
 	case "delete":
 		if arg == "" {
 			b.sendReply(msg.Chat.ID, "Usage: /delete_<article_id>")
 			return
 		}
-		b.handleDelete(msg, arg)
+		b.handleDelete(ctx, msg, arg)
 	case "help":
 		b.handleHelp(msg)
 	default:
@@ -63,14 +67,14 @@ func (b *Bot) handleCommand(msg *tgbotapi.Message) {
 	}
 }
 
-func (b *Bot) handleMarkRead(msg *tgbotapi.Message, articleID string) {
-	id, err := strconv.Atoi(articleID)
+func (b *Bot) handleMarkRead(ctx context.Context, msg *tgbotapi.Message, articleID string) {
+	id, err := uuid.Parse(articleID)
 	if err != nil {
-		b.sendReply(msg.Chat.ID, "Invalid article ID. Must be a number.")
+		b.sendReply(msg.Chat.ID, "Invalid article ID. Must be a UUID.")
 		return
 	}
 
-	err = b.articleStorage.MarkAsRead(id, msg.Chat.ID)
+	err = b.articleStorage.MarkAsRead(ctx, id, msg.Chat.ID)
 	if err != nil {
 		b.sendReply(msg.Chat.ID, "Failed to mark article as read.")
 		log.Printf("Error marking as read: %v", err)
@@ -80,14 +84,14 @@ func (b *Bot) handleMarkRead(msg *tgbotapi.Message, articleID string) {
 	b.sendReply(msg.Chat.ID, fmt.Sprintf("✅ Article #%d marked as read", id))
 }
 
-func (b *Bot) handleDelete(msg *tgbotapi.Message, articleID string) {
-	id, err := strconv.Atoi(articleID)
+func (b *Bot) handleDelete(ctx context.Context, msg *tgbotapi.Message, articleID string) {
+	id, err := uuid.Parse(articleID)
 	if err != nil {
 		b.sendReply(msg.Chat.ID, "Invalid article ID. Must be a number.")
 		return
 	}
 
-	err = b.articleStorage.DeleteArticle(id, msg.Chat.ID)
+	err = b.articleStorage.Delete(ctx, id, msg.Chat.ID)
 	if err != nil {
 		b.sendReply(msg.Chat.ID, "Failed to delete article.")
 		log.Printf("Error deleting article: %v", err)
@@ -97,14 +101,14 @@ func (b *Bot) handleDelete(msg *tgbotapi.Message, articleID string) {
 	b.sendReply(msg.Chat.ID, fmt.Sprintf("🗑 Article #%d deleted", id))
 }
 
-func (b *Bot) handleMessage(msg *tgbotapi.Message) {
+func (b *Bot) handleMessage(ctx context.Context, msg *tgbotapi.Message) {
 	urls := extractLinks(msg.Text)
 	if urls == nil {
 		b.sendReply(msg.Chat.ID, "Please use commands to interact with me. Type /help for available commands.")
 		return
 	}
 	for _, u := range urls {
-		b.innerHandleSave(u, getTitle(u), msg.Chat.ID)
+		b.innerHandleSave(ctx, u, getTitle(u), msg.Chat.ID)
 	}
 }
 
@@ -134,7 +138,7 @@ func extractLinks(text string) []string {
 	return links
 }
 
-func (b *Bot) handleSave(msg *tgbotapi.Message) {
+func (b *Bot) handleSave(ctx context.Context, msg *tgbotapi.Message) {
 	sharedArticle := strings.TrimSpace(msg.CommandArguments())
 	if sharedArticle == "" {
 		if msg.ReplyToMessage != nil {
@@ -152,7 +156,7 @@ func (b *Bot) handleSave(msg *tgbotapi.Message) {
 	}
 
 	for _, u := range urls {
-		b.innerHandleSave(u, getTitle(u), msg.Chat.ID)
+		b.innerHandleSave(ctx, u, getTitle(u), msg.Chat.ID)
 	}
 }
 
@@ -176,14 +180,14 @@ func getTitle(u string) string {
 	return article.Title
 }
 
-func (b *Bot) innerHandleSave(url string, title string, chatID int64) {
-	article := &storage.Article{
+func (b *Bot) innerHandleSave(ctx context.Context, url string, title string, chatID int64) {
+	article := &articles.Article{
 		URL:    url,
 		Title:  title,
 		UserID: chatID,
 	}
 
-	if err := b.articleStorage.SaveArticle(article); err != nil {
+	if err := b.articleStorage.Save(ctx, article); err != nil {
 		log.Printf("Error saving article: %v", err)
 		b.sendReply(chatID, "Failed to save article. Please try again.")
 		return
@@ -194,8 +198,8 @@ func (b *Bot) innerHandleSave(url string, title string, chatID int64) {
 	b.sendReply(chatID, reply)
 }
 
-func (b *Bot) handleList(msg *tgbotapi.Message) {
-	articles, err := b.articleStorage.GetArticles(msg.Chat.ID)
+func (b *Bot) handleList(ctx context.Context, msg *tgbotapi.Message) {
+	articles, err := b.articleStorage.Get(ctx, msg.Chat.ID)
 	if err != nil {
 		log.Printf("Error getting articles: %v", err)
 		b.sendReply(msg.Chat.ID, "Failed to retrieve articles. Please try again.")

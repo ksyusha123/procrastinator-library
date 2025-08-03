@@ -4,68 +4,56 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/ksyusha123/procrastinator-library/bot"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/ksyusha123/procrastinator-library/api"
 	"github.com/ksyusha123/procrastinator-library/storage"
+	"github.com/ksyusha123/procrastinator-library/storage/migrations"
+	yc "github.com/ydb-platform/ydb-go-yc-metadata"
 	"log"
 	"os"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/ksyusha123/procrastinator-library/bot"
+	"github.com/ydb-platform/ydb-go-sdk/v3"
 )
 
 var articleBot *bot.Bot
 
 func init() {
-	token := os.Getenv("TELEGRAM_BOT_TOKEN")
-	if token == "" {
-		panic("TELEGRAM_BOT_TOKEN environment variable not set")
+	token := getVariable("TELEGRAM_BOT_TOKEN")
+	dsn := getVariable("DB_ENDPOINT")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	db, err := ydb.Open(ctx, dsn, yc.WithInternalCA(), yc.WithCredentials())
+	if err != nil {
+		fmt.Printf("Driver failed: %v", err)
+	}
+	defer db.Close(ctx)
+	fmt.Printf("connected to %s, database '%s'", db.Endpoint(), db.Name())
+
+	if err := migrations.Migrate(ctx, db); err != nil {
+		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
-	db, err := storage.New("articles.db")
-	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
-	}
+	storageProvider := storage.NewYDBStorageProvider(db)
 
 	botAPI, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		log.Fatalf("Failed to create bot: %v", err)
 	}
 
-	articleBot = bot.New(botAPI, *db)
+	articleBot = bot.New(botAPI, storageProvider)
 }
 
-type APIGatewayRequest struct {
-	OperationID string `json:"operationId"`
-	Resource    string `json:"resource"`
-
-	HTTPMethod string `json:"httpMethod"`
-
-	Path           string            `json:"path"`
-	PathParameters map[string]string `json:"pathParameters"`
-
-	Headers           map[string]string   `json:"headers"`
-	MultiValueHeaders map[string][]string `json:"multiValueHeaders"`
-
-	QueryStringParameters           map[string]string   `json:"queryStringParameters"`
-	MultiValueQueryStringParameters map[string][]string `json:"multiValueQueryStringParameters"`
-
-	Parameters           map[string]string   `json:"parameters"`
-	MultiValueParameters map[string][]string `json:"multiValueParameters"`
-
-	Body            string `json:"body"`
-	IsBase64Encoded bool   `json:"isBase64Encoded,omitempty"`
-
-	RequestContext interface{} `json:"requestContext"`
+func getVariable(name string) string {
+	variable := os.Getenv(name)
+	if variable == "" {
+		panic("DB_ENDPOINT environment variable not set")
+	}
+	return variable
 }
 
-type APIGatewayResponse struct {
-	StatusCode        int                 `json:"statusCode"`
-	Headers           map[string]string   `json:"headers"`
-	MultiValueHeaders map[string][]string `json:"multiValueHeaders"`
-	Body              string              `json:"body"`
-	IsBase64Encoded   bool                `json:"isBase64Encoded,omitempty"`
-}
-
-func Greet(ctx context.Context, event *APIGatewayRequest) (*APIGatewayResponse, error) {
+func Greet(ctx context.Context, event *api.APIGatewayRequest) (*api.APIGatewayResponse, error) {
 	update := &tgbotapi.Update{}
 
 	if err := json.Unmarshal([]byte(event.Body), &update); err != nil {
@@ -74,9 +62,9 @@ func Greet(ctx context.Context, event *APIGatewayRequest) (*APIGatewayResponse, 
 
 	fmt.Println(event.HTTPMethod, event.Path)
 
-	articleBot.HandleUpdate(update)
+	articleBot.HandleUpdate(ctx, update)
 
-	return &APIGatewayResponse{
+	return &api.APIGatewayResponse{
 		StatusCode: 200,
 		Body:       fmt.Sprintf("Hello, %s", update.Message.Chat.ID),
 	}, nil
