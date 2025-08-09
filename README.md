@@ -1,5 +1,5 @@
 # Procrastinator Library
-Telegram-bot that helps you organize articles routine.
+Telegram-bot @procrastinator_library_bot helps you organize articles routine.
 
 ## 🛠 Available commands:
 
