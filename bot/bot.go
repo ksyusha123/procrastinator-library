@@ -3,28 +3,27 @@ package bot
 import (
 	"context"
 	"fmt"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/ksyusha123/procrastinator-library/storage"
+	"github.com/ksyusha123/procrastinator-library/storage/articles"
+	"github.com/ksyusha123/procrastinator-library/storage/users"
 	"log"
 	"os"
 	"strconv"
-
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/ksyusha123/procrastinator-library/storage"
 )
-
-type Article = storage.Article
 
 type Bot struct {
 	botAPI         *tgbotapi.BotAPI
-	articleStorage storage.ArticleStorage
-	userStorage    storage.UserStorage
+	articleStorage articles.ArticleStorage
+	userStorage    users.UserStorage
 	commands       map[string]string
 }
 
-func New(botAPI *tgbotapi.BotAPI, db storage.SQLiteDb) *Bot {
+func New(botAPI *tgbotapi.BotAPI, db *storage.Provider) *Bot {
 	return &Bot{
 		botAPI:         botAPI,
-		articleStorage: &db,
-		userStorage:    &db,
+		articleStorage: db.ArticleStorage,
+		userStorage:    db.UserStorage,
 		commands: map[string]string{
 			"save":   "Save an article (reply to message or provide URL)",
 			"list":   "List your saved articles",
@@ -51,7 +50,7 @@ func (b *Bot) Start(ctx context.Context) {
 	for {
 		select {
 		case update := <-updates:
-			b.handleUpdate(&update)
+			b.HandleUpdate(ctx, &update)
 			writeLastUpdateId(update.UpdateID)
 		case <-ctx.Done():
 			log.Println("Stopping bot updates")
