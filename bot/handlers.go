@@ -18,20 +18,20 @@ import (
 func (b *Bot) HandleUpdate(ctx context.Context, update *tgbotapi.Update) {
 	b.sendReply(update.Message.Chat.ID, "🐈 Meeeeow!")
 
-	//err := b.userStorage.Save(ctx, update.Message.Chat.ID)
-	//if err != nil {
-	//	return
-	//}
-	//if update.Message == nil {
-	//	return
-	//}
-	//
-	//if update.Message.IsCommand() {
-	//	b.handleCommand(ctx, update.Message)
-	//	return
-	//}
-	//
-	//b.handleMessage(ctx, update.Message)
+	err := b.userStorage.Save(ctx, update.Message.Chat.ID)
+	if err != nil {
+		return
+	}
+	if update.Message == nil {
+		return
+	}
+
+	if update.Message.IsCommand() {
+		b.handleCommand(ctx, update.Message)
+		return
+	}
+
+	b.handleMessage(ctx, update.Message)
 }
 
 func (b *Bot) handleCommand(ctx context.Context, msg *tgbotapi.Message) {
