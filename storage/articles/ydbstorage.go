@@ -58,10 +58,11 @@ func (s *YDBArticlesStorage) Save(ctx context.Context, article *Article) error {
 	DECLARE $url AS Utf8;
 	DECLARE $title AS Utf8;
 	DECLARE $user_id AS Int64;
+	DECLARE $is_read AS Bool;
 	DECLARE $created_at AS Timestamp;
 	
-	UPSERT INTO articles (id, url, title, user_id, created_at, updated_at)
-	VALUES ($id, $url, $title, $user_id, $created_at, $created_at);
+	UPSERT INTO articles (id, url, title, user_id, is_read, created_at, updated_at)
+	VALUES ($id, $url, $title, $user_id, $is_read, $created_at, $created_at);
 	`
 
 	now := time.Now().UTC()
@@ -75,6 +76,7 @@ func (s *YDBArticlesStorage) Save(ctx context.Context, article *Article) error {
 				table.ValueParam("$url", types.UTF8Value(article.URL)),
 				table.ValueParam("$title", types.UTF8Value(article.Title)),
 				table.ValueParam("$user_id", types.Int64Value(article.UserID)),
+				table.ValueParam("$is_read", types.BoolValue(article.IsRead)),
 				table.ValueParam("$created_at", types.TimestampValueFromTime(now)),
 			),
 		)

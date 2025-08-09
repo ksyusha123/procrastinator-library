@@ -15,10 +15,11 @@ type YDBUserStorage struct {
 func (s *YDBUserStorage) Save(ctx context.Context, telegramUserID int64) error {
 	query := `
 	DECLARE $id AS Int64;
+	DECLARE $notifications_enabled AS Bool;
 	DECLARE $created_at AS Timestamp;
 	
-	UPSERT INTO users (id, created_at, updated_at)
-	VALUES ($telegram_id, $created_at, $created_at);
+	UPSERT INTO users (id, notifications_enabled, created_at, updated_at)
+	VALUES ($id, $notifications_enabled, $created_at, $created_at);
 	`
 
 	return s.db.Table().Do(ctx, func(ctx context.Context, s table.Session) error {
@@ -27,6 +28,7 @@ func (s *YDBUserStorage) Save(ctx context.Context, telegramUserID int64) error {
 			query,
 			table.NewQueryParameters(
 				table.ValueParam("$id", types.Int64Value(telegramUserID)),
+				table.ValueParam("$notifications_enabled", types.BoolValue(true)),
 				table.ValueParam("$created_at", types.TimestampValueFromTime(time.Now().UTC())),
 			),
 		)

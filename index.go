@@ -18,22 +18,8 @@ import (
 
 var articleBot *bot.Bot
 
-func init() {
+func initBot(ctx context.Context, db *ydb.Driver) {
 	token := getVariable("TELEGRAM_BOT_TOKEN")
-	dsn := getVariable("DB_ENDPOINT")
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	db, err := ydb.Open(ctx, dsn, yc.WithInternalCA(), yc.WithCredentials())
-	if err != nil {
-		fmt.Printf("Driver failed: %v", err)
-	}
-	defer db.Close(ctx)
-	fmt.Printf("connected to %s, database '%s'", db.Endpoint(), db.Name())
-
-	if err := migrations.Migrate(ctx, db); err != nil {
-		log.Fatalf("Failed to run migrations: %v", err)
-	}
 
 	storageProvider := storage.NewYDBStorageProvider(db)
 
@@ -54,6 +40,19 @@ func getVariable(name string) string {
 }
 
 func Greet(ctx context.Context, event *api.APIGatewayRequest) (*api.APIGatewayResponse, error) {
+	db, err := createYDBConnection(ctx)
+	if err != nil {
+		log.Fatalf("Connection failed: %v", err)
+	}
+
+	defer db.Close(ctx)
+
+	if err := migrations.Migrate(ctx, db); err != nil {
+		log.Fatalf("Failed to run migrations: %v", err)
+	}
+
+	initBot(ctx, db)
+
 	update := &tgbotapi.Update{}
 
 	if err := json.Unmarshal([]byte(event.Body), &update); err != nil {
@@ -68,4 +67,18 @@ func Greet(ctx context.Context, event *api.APIGatewayRequest) (*api.APIGatewayRe
 		StatusCode: 200,
 		Body:       fmt.Sprintf("Hello, %s", update.Message.Chat.ID),
 	}, nil
+}
+
+func createYDBConnection(ctx context.Context) (*ydb.Driver, error) {
+	dsn := getVariable("DB_ENDPOINT")
+
+	db, err := ydb.Open(ctx, dsn, yc.WithInternalCA(), yc.WithCredentials())
+	if err != nil {
+		fmt.Printf("Driver failed: %v", err)
+		return nil, err
+	}
+
+	fmt.Printf("connected to %s, database '%s'", db.Endpoint(), db.Name())
+
+	return db, nil
 }

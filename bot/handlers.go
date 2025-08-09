@@ -16,21 +16,22 @@ import (
 )
 
 func (b *Bot) HandleUpdate(ctx context.Context, update *tgbotapi.Update) {
-	//b.sendReply(update.Message.Chat.ID, "Meeeeow!")
-	err := b.userStorage.Save(ctx, update.Message.Chat.ID)
-	if err != nil {
-		return
-	}
-	if update.Message == nil {
-		return
-	}
+	b.sendReply(update.Message.Chat.ID, "🐈 Meeeeow!")
 
-	if update.Message.IsCommand() {
-		b.handleCommand(ctx, update.Message)
-		return
-	}
-
-	b.handleMessage(ctx, update.Message)
+	//err := b.userStorage.Save(ctx, update.Message.Chat.ID)
+	//if err != nil {
+	//	return
+	//}
+	//if update.Message == nil {
+	//	return
+	//}
+	//
+	//if update.Message.IsCommand() {
+	//	b.handleCommand(ctx, update.Message)
+	//	return
+	//}
+	//
+	//b.handleMessage(ctx, update.Message)
 }
 
 func (b *Bot) handleCommand(ctx context.Context, msg *tgbotapi.Message) {
@@ -182,6 +183,7 @@ func getTitle(u string) string {
 
 func (b *Bot) innerHandleSave(ctx context.Context, url string, title string, chatID int64) {
 	article := &articles.Article{
+		ID:     uuid.New(),
 		URL:    url,
 		Title:  title,
 		UserID: chatID,
